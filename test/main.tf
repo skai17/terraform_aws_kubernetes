@@ -10,7 +10,11 @@ terraform {
  bucket = "remote-state-s3"
  dynamodb_table = "remote-state-dynamo"
  region = "eu-central-1"
- key = "remote-state/test/"
+ key = "remote-state/test/terraform.tfstate"
  }
 }
 
+resource "aws_s3_bucket" "some-example-bucket" {
+    bucket = "kais-example-bucket"
+   
+}
