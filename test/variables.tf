@@ -17,3 +17,8 @@ variable "remote_state_path" {
     type = string
     default = "remote-state/test/"
 }
+
+variable "cluster-name" {
+  default = "eks-cluster-test"
+  type    = string
+}
