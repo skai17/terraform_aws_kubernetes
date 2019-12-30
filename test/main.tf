@@ -7,6 +7,7 @@
 # Configure the AWS Provider
 provider "aws" {
   region  = var.default_zone
+  version = "~> 2.0"
 }
 
 # Tell Terraform to use the S3 bucket for state information and the dynamoDB for state locking
@@ -95,20 +96,16 @@ resource "aws_subnet" "demo" {
 resource "aws_iam_role" "demo-cluster" {
   name = "terraform-eks-demo-cluster"
 
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "eks.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-POLICY
+  assume_role_policy = jsonencode({
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = {
+        Service = "eks.amazonaws.com"
+      }
+    }]
+    Version = "2012-10-17"
+  })
 }
 
 # give the 2 necessary policies to the cluster IAM role
@@ -127,24 +124,19 @@ resource "aws_iam_role_policy_attachment" "demo-cluster-AmazonEKSServicePolicy" 
 resource "aws_iam_role" "demo-node" {
   name = "terraform-eks-demo-node"
 
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "eks.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-POLICY
-
+  assume_role_policy = jsonencode({
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+    Version = "2012-10-17"
+  })
 }
 
-# Add the required policies to the node IAM role
+
 resource "aws_iam_role_policy_attachment" "demo-node-AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.demo-node.name
@@ -158,12 +150,6 @@ resource "aws_iam_role_policy_attachment" "demo-node-AmazonEKS_CNI_Policy" {
 resource "aws_iam_role_policy_attachment" "demo-node-AmazonEC2ContainerRegistryReadOnly" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
   role       = aws_iam_role.demo-node.name
-}
-
-# this is needed for the aws_launch_configuration later
-resource "aws_iam_instance_profile" "node" {
-  name = "terraform-eks-node"
-  role = aws_iam_role.demo-node.name
 }
 
 
@@ -195,7 +181,7 @@ resource "aws_security_group" "demo-cluster" {
 #           to the Kubernetes. You will need to replace A.B.C.D below with
 #           your real IP.
 resource "aws_security_group_rule" "demo-cluster-ingress-workstation-https" {
-  cidr_blocks       = ["95.91.217.39/32"]
+  cidr_blocks       = ["95.91.217.50/32"]
   description       = "Allow workstation to communicate with the cluster API Server"
   from_port         = 443
   protocol          = "tcp"
@@ -266,27 +252,6 @@ resource "aws_security_group_rule" "demo-node-ingress-cluster" {
   type                     = "ingress"
 }
 
-# For testing for security rule issues, I opened everything with the following 2 blocks. Should not be needed.
-/*resource "aws_security_group_rule" "all_open_1" {
-  description              = "Allow node to communicate with each other"
-  from_port                = 0
-  protocol                 = "-1"
-  security_group_id        = aws_security_group.demo-cluster.id
-  source_security_group_id = aws_security_group.demo-node.id
-  to_port                  = 65535
-  type                     = "ingress"
-}
-
-resource "aws_security_group_rule" "all_open_2" {
-  description              = "Allow node to communicate with each other"
-  from_port                = 0
-  protocol                 = "-1"
-  security_group_id        = aws_security_group.demo-node.id
-  source_security_group_id = aws_security_group.demo-cluster.id
-  to_port                  = 65535
-  type                     = "ingress"
-}*/
-
 ##################################################
 #
 #          EKS Control Plane
@@ -301,7 +266,7 @@ resource "aws_eks_cluster" "demo" {
 
  vpc_config {
     security_group_ids = [aws_security_group.demo-cluster.id]
-    subnet_ids         = aws_subnet.demo.*.id
+    subnet_ids         = aws_subnet.demo[*].id
     endpoint_private_access = true
   }
 
@@ -319,67 +284,28 @@ resource "aws_eks_cluster" "demo" {
 ##################################################
 
 
-# find the most recent image for EKS worker nodes
-data "aws_ami" "eks-worker" {
-   filter {
-     name   = "name"
-     values = ["amazon-eks-node-${aws_eks_cluster.demo.version}-v*"]
-   }
+resource "aws_eks_node_group" "node_group_1"{
+  cluster_name    = aws_eks_cluster.demo.name
+  node_group_name = "node_group_1"
+  node_role_arn   = aws_iam_role.demo-node.arn
+  subnet_ids      = aws_subnet.demo[*].id
+  instance_types  = ["t2.micro"]
 
-   most_recent = true
-   owners      = ["602401143452"] # Amazon EKS AMI Account ID
- }
-
-# EKS currently documents this required userdata for EKS worker nodes to
-# properly configure Kubernetes applications on the EC2 instance.
-# We implement a Terraform local here to simplify Base64 encoding this
-# information into the AutoScaling Launch Configuration.
-# More information: https://docs.aws.amazon.com/eks/latest/userguide/launch-workers.html
-locals {
-  demo-node-userdata = <<USERDATA
-#!/bin/bash
-set -o xtrace
-/etc/eks/bootstrap.sh --apiserver-endpoint '${aws_eks_cluster.demo.endpoint}' --b64-cluster-ca '${aws_eks_cluster. demo.certificate_authority[0].data}' '${var.cluster-name}'
-USERDATA
-
-}
-
-# Create the launch config for the autoscaling group
-resource "aws_launch_configuration" "demo" {
-  associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.node.name
-  image_id                    = data.aws_ami.eks-worker.id
-  instance_type               = "t2.micro"
-  name_prefix                 = "terraform-eks-demo"
-  security_groups  = [aws_security_group.demo-node.id]
-  user_data_base64 = base64encode(local.demo-node-userdata)
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# create the autoscaling group
-resource "aws_autoscaling_group" "demo" {
-  desired_capacity     = 3
-  launch_configuration = aws_launch_configuration.demo.id
-  max_size             = 3
-  min_size             = 1
-  name                 = "terraform-eks-demo"
-  vpc_zone_identifier = aws_subnet.demo[*].id
-
-  tag {
-    key                 = "Name"
-    value               = "terraform-eks-demo"
-    propagate_at_launch = true
+  scaling_config {
+    desired_size = 2
+    max_size     = 3
+    min_size     = 1
   }
 
-  tag {
-    key                 = "kubernetes.io/cluster/${var.cluster-name}"
-    value               = "owned"
-    propagate_at_launch = true
-  }
+  # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
+  # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
+  depends_on = [
+    aws_iam_role_policy_attachment.demo-node-AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.demo-node-AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.demo-node-AmazonEC2ContainerRegistryReadOnly,
+  ]
 }
+
 
 
 
