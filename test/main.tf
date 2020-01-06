@@ -252,6 +252,7 @@ resource "aws_security_group_rule" "demo-node-ingress-cluster" {
   type                     = "ingress"
 }
 
+
 ##################################################
 #
 #          EKS Control Plane
@@ -289,7 +290,7 @@ resource "aws_eks_node_group" "node_group_1"{
   node_group_name = "node_group_1"
   node_role_arn   = aws_iam_role.demo-node.arn
   subnet_ids      = aws_subnet.demo[*].id
-  instance_types  = ["t2.micro"]
+  instance_types  = ["t2.medium"]
 
   scaling_config {
     desired_size = 2
