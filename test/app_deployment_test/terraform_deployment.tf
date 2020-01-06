@@ -7,7 +7,7 @@ terraform {
  bucket = "remote-state-s3"
  dynamodb_table = "remote-state-dynamo"
  region = "eu-central-1"
- key = "remote-state/test/deployments.tfstate"
+ key = "remote-state/int/deployments.tfstate"
  }
 }
 
@@ -34,12 +34,13 @@ resource "kubernetes_deployment" "simple-twitter" {
       }
       spec {
         container {
-          #image = "nginx:1.7.8"
+          #image = "nginxdemos/hello"
           image = "auth0blog/kubernetes-tutorial"
           name  = "auth0blog-simpletwitter-container"
 
           port {
             container_port = 3000
+            #container_port = 80
           }
 
           resources {
@@ -70,6 +71,7 @@ resource "kubernetes_service" "nginx" {
     port {
       port        = 80
       target_port = 3000
+      #target_port = 80
     }
 
     type = "LoadBalancer"
