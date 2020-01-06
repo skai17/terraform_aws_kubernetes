@@ -2,7 +2,7 @@
 ##          Config for environment
 ###################################################
 variable "stage" {
-  default = "int" # <-- To be changed for new environment (e.g. test, int, prod) !
+  default = "test" # <-- To be changed for new environment (e.g. test, int, prod) !
   type    = string
 }
 
@@ -14,7 +14,7 @@ terraform {
  bucket = "remote-state-s3"
  dynamodb_table = "remote-state-dynamo"
  region = "eu-central-1"
- key = "remote-state/int/terraform.tfstate" # <-- Change for new environment (e.g. ../test/.., ../int/.., ../prod/..) !
+ key = "remote-state/test/terraform.tfstate" # <-- Change for new environment (e.g. ../test/.., ../int/.., ../prod/..) !
  }
 }
 
