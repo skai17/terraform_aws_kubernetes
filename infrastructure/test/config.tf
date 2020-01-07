@@ -32,7 +32,7 @@ locals {
   # eks
   cluster-name = "${var.stage}-eks-cluster"
   ng1_worker_instance_types = ["t2.micro"]
-  ng1_desired_size = 4
-  ng1_max_size     = 8
-  ng1_min_size     = 2
+  ng1_desired_size = 6
+  ng1_max_size     = 12
+  ng1_min_size     = 4
 }
