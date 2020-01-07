@@ -17,3 +17,13 @@ terraform {
  key = "remote-state/test/deployments.tfstate" # <-- Change for new environment (e.g. ../test/.., ../int/.., ../prod/..) !
  }
 }
+
+
+##################################################
+##          General config
+###################################################
+
+
+provider "kubernetes" {
+  version = "~> 1.10"
+}

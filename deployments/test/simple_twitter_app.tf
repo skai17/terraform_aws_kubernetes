@@ -1,79 +1,90 @@
-provider "kubernetes" {}
-
 locals{
-  app_name = "${var.stage}-simple-twitter"
+  simple_twitter_app_name = "${var.stage}-simple-twitter"
+  simple_twitter_clusterIP_service_name =  "${var.stage}-simple-twitter-clusterip"
 }
 
-
 resource "kubernetes_deployment" "simple-twitter" {
+
   metadata {
-    name = local.app_name
-    labels = {
-      App = local.app_name
-    }
+    name = local.simple_twitter_app_name
   }
 
   spec {
     replicas = 2
+
     selector {
       match_labels = {
-        App = local.app_name
+        app = local.simple_twitter_app_name
       }
     }
+
     template {
       metadata {
         labels = {
-          App = local.app_name
+          app = local.simple_twitter_app_name
         }
       }
+
       spec {
         container {
-          #image = "nginxdemos/hello"
           image = "auth0blog/kubernetes-tutorial"
-          name  = local.app_name
-
+          name  = local.simple_twitter_app_name
           port {
             container_port = 3000
-            #container_port = 80
-          }
-
-          resources {
-            limits {
-              cpu    = "0.5"
-              memory = "512Mi"
-            }
-            requests {
-              cpu    = "250m"
-              memory = "50Mi"
-            }
           }
         }
       }
     }
   }
+    depends_on = [
+    kubernetes_service.simple-twitter
+  ]
 }
 
 
-resource "kubernetes_service" "nginx" {
+resource "kubernetes_service" "simple-twitter" {
+
   metadata {
-    name = "nginx"
+    name = local.simple_twitter_clusterIP_service_name
   }
+
   spec {
     selector = {
-      App = kubernetes_deployment.simple-twitter.spec.0.template.0.metadata[0].labels.App
-    }
-    port {
-      port        = 80
-      target_port = 3000
-      #target_port = 80
+      app = local.simple_twitter_app_name
     }
 
-    type = "LoadBalancer"
+    port {
+      port        = 80
+      protocol    = "TCP"
+      target_port = 3000
+    }
+
+    type = "ClusterIP"
   }
+  depends_on = [
+    kubernetes_ingress.simple-twitter
+  ]
 }
 
 
+resource "kubernetes_ingress" "simple-twitter" {
 
-output "lb_ip" {
-  value = kubernetes_service.nginx.load_balancer_ingress[0].hostname
+  metadata {
+    name = "${local.simple_twitter_app_name}-ingress"
+  }
+
+  spec {
+    rule {
+      http {
+        path {
+          path = "/twitter"
+
+          backend {
+            service_name = local.simple_twitter_clusterIP_service_name
+            service_port = 80
+          }
+        }
+      }
+    }
+  }
 }
